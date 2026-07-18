@@ -6,5 +6,5 @@ import react from "@vitejs/plugin-react";
 // If your repo has a different name, update base to "/your-repo-name/".
 export default defineConfig({
   plugins: [react()],
-  base: "/paycheck-tracker/",
+  base: "/",
 });
