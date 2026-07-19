@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus, Download, Trash2, Pencil, X, Check, Wallet, Radio,
-  ChevronDown, StickyNote, Zap, LogOut,
+  ChevronDown, ChevronLeft, ChevronRight, StickyNote, Zap, LogOut,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -15,6 +15,7 @@ const COLOR_A = "#A78BFA";
 const COLOR_B = "#22D3EE";
 const COLOR_PENDING = "#F0288C";
 const COLOR_OK = "#34D399";
+const COLOR_OVERPAID = "#FBBF24";
 
 const emptyForm = {
   month: new Date().toISOString().slice(0, 7),
@@ -134,7 +135,13 @@ function HistoryRow({ entry, index, maxGross, onEdit, onDelete }) {
   const pctA = maxGross > 0 ? (entry.grossA / maxGross) * 100 : 0;
   const pctB = maxGross > 0 ? (entry.grossB / maxGross) * 100 : 0;
   const receivedPct = entry.gross > 0 ? Math.min((entry.received / entry.gross) * 100, 100) : 0;
-  const hasPending = entry.pending > 0.004;
+
+  const isPending = entry.pending > 0.004;
+  const isOverpaid = entry.pending < -0.004;
+  const barColor = isPending ? COLOR_PENDING : isOverpaid ? COLOR_OVERPAID : COLOR_OK;
+
+  const statusLabel = isPending ? money(entry.pending) : isOverpaid ? `+${money(Math.abs(entry.pending))}` : "Settled";
+  const statusSub = isPending ? "still owed to you" : isOverpaid ? "took more than earned" : "";
 
   return (
     <div className="rounded-xl border transition-all"
@@ -155,20 +162,22 @@ function HistoryRow({ entry, index, maxGross, onEdit, onDelete }) {
             <div className="h-full transition-all ease-out"
               style={{
                 width: mounted ? `${receivedPct}%` : "0%",
-                background: hasPending ? COLOR_PENDING : COLOR_OK,
+                background: barColor,
                 transitionDuration: "1100ms", transitionDelay: "200ms",
-                ...(hasPending ? {
+                ...(isPending ? {
                   backgroundImage: "repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 6px, transparent 6px 12px)",
                   backgroundSize: "200% 100%", animation: "stripe-move 1.4s linear infinite",
                 } : {}),
               }} />
           </div>
         </div>
-        <div className="text-right shrink-0 w-28">
-          <p className="text-sm font-bold tabular-nums" style={{ color: hasPending ? COLOR_PENDING : "rgba(255,255,255,0.4)" }}>
-            {hasPending ? money(entry.pending) : "settled"}
+        <div className="text-right shrink-0 w-32">
+          <p className="text-sm font-bold tabular-nums" style={{ color: isPending || isOverpaid ? barColor : "rgba(255,255,255,0.45)" }}>
+            {statusLabel}
           </p>
-          <p className="text-[11px] text-white/35 tabular-nums">{money(entry.gross)} gross</p>
+          <p className="text-[11px] text-white/35 tabular-nums">
+            {statusSub || `${money(entry.gross)} gross`}
+          </p>
         </div>
         <ChevronDown size={16} className="text-white/30 shrink-0 transition-transform duration-300"
           style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
@@ -176,19 +185,65 @@ function HistoryRow({ entry, index, maxGross, onEdit, onDelete }) {
 
       <div className="grid transition-all duration-300 ease-out overflow-hidden" style={{ gridTemplateRows: open ? "1fr" : "0fr" }}>
         <div className="min-h-0 overflow-hidden">
-          <div className="px-4 pb-4 pt-1 border-t border-white/5 mt-1">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-3">
-              <div><p className="text-white/35 mb-0.5">Company A</p><p className="text-white font-medium tabular-nums">{Number(entry.hoursA) || 0} hrs &middot; {money(entry.grossA)}</p></div>
-              <div><p className="text-white/35 mb-0.5">Company B</p><p className="text-white font-medium tabular-nums">{Number(entry.hoursB) || 0} hrs &middot; {money(entry.grossB)}</p></div>
-              <div><p className="text-white/35 mb-0.5">Regular paycheck</p><p className="text-white font-medium tabular-nums">{money(Number(entry.regularPaycheck) || 0)}</p></div>
-              <div><p className="text-white/35 mb-0.5">Extra taken</p><p className="text-white font-medium tabular-nums">{money(Number(entry.extraAmount) || 0)}</p></div>
+          <div className="px-4 pb-4 pt-3 border-t border-white/5 mt-1 space-y-3">
+            <div className="rounded-xl border border-white/8 p-3" style={{ background: "rgba(255,255,255,0.015)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-white/35 mb-2.5">Earnings</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLOR_A }} />
+                    <span className="text-sm text-white/70">Company A &middot; {Number(entry.hoursA) || 0} hrs</span>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums text-white">{money(entry.grossA)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLOR_B }} />
+                    <span className="text-sm text-white/70">Company B &middot; {Number(entry.hoursB) || 0} hrs</span>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums text-white">{money(entry.grossB)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                  <span className="text-xs text-white/40">Total gross earned</span>
+                  <span className="text-sm font-bold tabular-nums text-white">{money(entry.gross)}</span>
+                </div>
+              </div>
             </div>
+
+            <div className="rounded-xl border border-white/8 p-3" style={{ background: "rgba(255,255,255,0.015)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-white/35 mb-2.5">Payments received</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white/70">Regular paycheck</span>
+                  <span className="text-sm font-semibold tabular-nums text-white">{money(Number(entry.regularPaycheck) || 0)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white/70">Extra taken</span>
+                  <span className="text-sm font-semibold tabular-nums text-white">{money(Number(entry.extraAmount) || 0)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                  <span className="text-xs text-white/40">Total received</span>
+                  <span className="text-sm font-bold tabular-nums text-white">{money(entry.received)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: `${barColor}14`, border: `1px solid ${barColor}35` }}>
+              <span className="text-xs font-medium" style={{ color: barColor }}>
+                {isPending ? "Employer still owes you" : isOverpaid ? "You took more than you earned" : "Fully settled"}
+              </span>
+              <span className="text-sm font-bold tabular-nums" style={{ color: barColor }}>
+                {isPending || isOverpaid ? money(Math.abs(entry.pending)) : "$0.00"}
+              </span>
+            </div>
+
             {entry.notes && (
-              <div className="flex items-start gap-1.5 text-xs text-white/50 mb-3">
+              <div className="flex items-start gap-1.5 text-xs text-white/50">
                 <StickyNote size={13} className="mt-0.5 shrink-0" /><span>{entry.notes}</span>
               </div>
             )}
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-3 pt-1">
               <button onClick={() => onEdit(entry)} className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
                 <Pencil size={12} /> Edit
               </button>
@@ -209,7 +264,8 @@ export default function Dashboard({ uid, onLogout }) {
   const [editingMonth, setEditingMonth] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [openModal, setOpenModal] = useState(null); // null | "A" | "B"
+  const [openModal, setOpenModal] = useState(null); // null | "hoursA" | "hoursB" | "gross" | "received" | "pending"
+  const [historyYearIdx, setHistoryYearIdx] = useState(0);
 
   const computed = useMemo(() => {
     return entries.map((e) => {
@@ -231,6 +287,23 @@ export default function Dashboard({ uid, onLogout }) {
   const chartData = useMemo(() => computed.slice().sort((a, b) => (a.month > b.month ? 1 : -1)).map((e) => ({
     month: monthLabel(e.month).replace(" 20", " '"), gross: Number(e.gross.toFixed(2)), received: Number(e.received.toFixed(2)),
   })), [computed]);
+
+  const historyYears = useMemo(
+    () => [...new Set(computed.map((e) => Number(e.month.split("-")[0])))].sort((a, b) => b - a),
+    [computed]
+  );
+  const historyYear = historyYears[Math.min(historyYearIdx, Math.max(historyYears.length - 1, 0))];
+  const historyForYear = useMemo(
+    () => computed.filter((e) => Number(e.month.split("-")[0]) === historyYear),
+    [computed, historyYear]
+  );
+  const historyYearTotals = useMemo(
+    () => historyForYear.reduce((acc, e) => {
+      acc.gross += e.gross; acc.received += e.received; acc.pending += e.pending;
+      return acc;
+    }, { gross: 0, received: 0, pending: 0 }),
+    [historyForYear]
+  );
 
   const pctPaid = totals.gross > 0 ? Math.min(totals.received / totals.gross, 1) : 0;
   const pendingAnimated = useCountUp(totals.pending);
@@ -427,14 +500,53 @@ export default function Dashboard({ uid, onLogout }) {
                   <Download size={14} /> Export spreadsheet
                 </button>
               </div>
+
               {computed.length === 0 ? (
                 <p className="text-sm text-white/30 py-10 text-center">No months logged yet. Add your first month above.</p>
               ) : (
-                <div className="space-y-2">
-                  {computed.map((e, i) => (
-                    <HistoryRow key={e.month} entry={e} index={i} maxGross={maxGross} onEdit={startEdit} onDelete={handleDelete} />
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-center justify-between mb-4 rounded-xl border border-white/8 px-3 py-2.5" style={{ background: "rgba(255,255,255,0.02)" }}>
+                    <button
+                      onClick={() => setHistoryYearIdx((i) => Math.min(i + 1, historyYears.length - 1))}
+                      disabled={historyYearIdx >= historyYears.length - 1}
+                      className="p-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-25 disabled:hover:text-white/60 transition-colors"
+                      aria-label="Earlier year"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-white tabular-nums leading-none">{historyYear}</p>
+                      <p className="text-[11px] text-white/35 mt-1">
+                        {historyForYear.length} month{historyForYear.length === 1 ? "" : "s"} &middot;{" "}
+                        <span style={{
+                          color: historyYearTotals.pending > 0.004 ? COLOR_PENDING
+                            : historyYearTotals.pending < -0.004 ? COLOR_OVERPAID
+                            : COLOR_OK,
+                        }}>
+                          {historyYearTotals.pending > 0.004
+                            ? `${money(historyYearTotals.pending)} pending`
+                            : historyYearTotals.pending < -0.004
+                            ? `${money(Math.abs(historyYearTotals.pending))} overpaid`
+                            : "settled"}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setHistoryYearIdx((i) => Math.max(i - 1, 0))}
+                      disabled={historyYearIdx <= 0}
+                      className="p-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-25 disabled:hover:text-white/60 transition-colors"
+                      aria-label="Later year"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {historyForYear.map((e, i) => (
+                      <HistoryRow key={e.month} entry={e} index={i} maxGross={maxGross} onEdit={startEdit} onDelete={handleDelete} />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
