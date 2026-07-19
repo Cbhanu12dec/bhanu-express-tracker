@@ -6,6 +6,8 @@ import {
 import * as XLSX from "xlsx";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useEntries } from "../hooks/useEntries";
+import HoursModal from "./HoursModal";
+import AmountModal from "./AmountModal";
 
 const RATE_A = 54.5;
 const RATE_B = 57.8;
@@ -51,17 +53,52 @@ function useCountUp(target, duration = 900) {
   return val;
 }
 
-function MetricCard({ icon, label, value, accent }) {
+function HourStatCard({ label, value, rate, accent, onClick }) {
+  const animated = useCountUp(value, 700);
+  return (
+    <button
+      onClick={onClick}
+      className="relative rounded-2xl p-5 border overflow-hidden text-left w-full group transition-all hover:-translate-y-0.5"
+      style={{ background: "linear-gradient(155deg, #14141c 0%, #0e0e15 100%)", borderColor: "rgba(255,255,255,0.08)" }}
+    >
+      <div className="relative flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold tracking-wide uppercase text-white/50">{label}</span>
+        <span
+          className="text-[10px] font-medium px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ color: accent, background: `${accent}1a` }}
+        >
+          View by year
+        </span>
+      </div>
+      <p className="relative text-3xl font-bold tabular-nums tracking-tight" style={{ color: accent }}>
+        {animated.toFixed(1)} <span className="text-sm font-medium text-white/35">hrs</span>
+      </p>
+      <p className="relative text-[11px] text-white/30 mt-1">${rate}/hr</p>
+    </button>
+  );
+}
+
+function MetricCard({ icon, label, value, accent, onClick }) {
   const animated = useCountUp(value);
   return (
-    <div className="relative rounded-2xl p-5 border overflow-hidden"
+    <button
+      onClick={onClick}
+      className="relative rounded-2xl p-5 border overflow-hidden text-left w-full group transition-all hover:-translate-y-0.5"
       style={{ background: "linear-gradient(155deg, #14141c 0%, #0e0e15 100%)", borderColor: "rgba(255,255,255,0.08)" }}>
-      <div className="relative flex items-center gap-2 mb-3" style={{ color: accent }}>
-        {icon}
-        <span className="text-xs font-semibold tracking-wide uppercase text-white/50">{label}</span>
+      <div className="relative flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2" style={{ color: accent }}>
+          {icon}
+          <span className="text-xs font-semibold tracking-wide uppercase text-white/50">{label}</span>
+        </div>
+        <span
+          className="text-[10px] font-medium px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          style={{ color: accent, background: `${accent}1a` }}
+        >
+          View by year
+        </span>
       </div>
       <p className="relative text-3xl font-bold tabular-nums text-white tracking-tight">{money(animated)}</p>
-    </div>
+    </button>
   );
 }
 
@@ -172,6 +209,7 @@ export default function Dashboard({ uid, onLogout }) {
   const [editingMonth, setEditingMonth] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openModal, setOpenModal] = useState(null); // null | "A" | "B"
 
   const computed = useMemo(() => {
     return entries.map((e) => {
@@ -185,8 +223,10 @@ export default function Dashboard({ uid, onLogout }) {
 
   const maxGross = useMemo(() => Math.max(1, ...computed.map((e) => e.gross)), [computed]);
   const totals = useMemo(() => computed.reduce((acc, e) => {
-    acc.gross += e.gross; acc.received += e.received; acc.pending += e.pending; return acc;
-  }, { gross: 0, received: 0, pending: 0 }), [computed]);
+    acc.gross += e.gross; acc.received += e.received; acc.pending += e.pending;
+    acc.hoursA += Number(e.hoursA) || 0; acc.hoursB += Number(e.hoursB) || 0;
+    return acc;
+  }, { gross: 0, received: 0, pending: 0, hoursA: 0, hoursB: 0 }), [computed]);
 
   const chartData = useMemo(() => computed.slice().sort((a, b) => (a.month > b.month ? 1 : -1)).map((e) => ({
     month: monthLabel(e.month).replace(" 20", " '"), gross: Number(e.gross.toFixed(2)), received: Number(e.received.toFixed(2)),
@@ -281,16 +321,31 @@ export default function Dashboard({ uid, onLogout }) {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-              <MetricCard icon={<Radio size={15} />} label="Gross earned" value={totals.gross} accent={COLOR_A} />
-              <MetricCard icon={<Wallet size={15} />} label="Total received" value={totals.received} accent={COLOR_OK} />
-              <div className={`relative rounded-2xl p-5 border overflow-hidden ${totals.pending > 0.004 ? "pending-pulse" : ""}`}
+              <MetricCard icon={<Radio size={15} />} label="Gross earned" value={totals.gross} accent={COLOR_A} onClick={() => setOpenModal("gross")} />
+              <MetricCard icon={<Wallet size={15} />} label="Total received" value={totals.received} accent={COLOR_OK} onClick={() => setOpenModal("received")} />
+              <button
+                onClick={() => setOpenModal("pending")}
+                className={`relative rounded-2xl p-5 border overflow-hidden text-left w-full group transition-all hover:-translate-y-0.5 ${totals.pending > 0.004 ? "pending-pulse" : ""}`}
                 style={{ background: "linear-gradient(155deg, #1f1220 0%, #14090f 100%)", borderColor: "rgba(240,40,140,0.25)" }}>
                 <div className="relative flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold tracking-wide uppercase text-white/50">Remaining pending</span>
+                  <span
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: COLOR_PENDING, background: `${COLOR_PENDING}1a` }}
+                  >
+                    View by year
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="relative text-3xl font-bold tabular-nums tracking-tight" style={{ color: COLOR_PENDING }}>{money(pendingAnimated)}</p>
                   <SignalGauge pct={pctPaid} />
                 </div>
-                <p className="relative text-3xl font-bold tabular-nums tracking-tight" style={{ color: COLOR_PENDING }}>{money(pendingAnimated)}</p>
-              </div>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <HourStatCard label="Company A total hours" value={totals.hoursA} rate={RATE_A} accent={COLOR_A} onClick={() => setOpenModal("hoursA")} />
+              <HourStatCard label="Company B total hours" value={totals.hoursB} rate={RATE_B} accent={COLOR_B} onClick={() => setOpenModal("hoursB")} />
             </div>
 
             {chartData.length > 1 && (
@@ -385,6 +440,28 @@ export default function Dashboard({ uid, onLogout }) {
 
             <p className="text-xs text-white/25 mt-4 text-center">Saved to your account &middot; persists until you delete it.</p>
           </>
+        )}
+
+        {(openModal === "hoursA" || openModal === "hoursB") && (
+          <HoursModal
+            company={openModal === "hoursA" ? "A" : "B"}
+            rate={openModal === "hoursA" ? RATE_A : RATE_B}
+            color={openModal === "hoursA" ? COLOR_A : COLOR_B}
+            entries={entries}
+            onClose={() => setOpenModal(null)}
+          />
+        )}
+
+        {(openModal === "gross" || openModal === "received" || openModal === "pending") && (
+          <AmountModal
+            label={
+              openModal === "gross" ? "Gross earned" : openModal === "received" ? "Total received" : "Remaining pending"
+            }
+            valueKey={openModal}
+            color={openModal === "gross" ? COLOR_A : openModal === "received" ? COLOR_OK : COLOR_PENDING}
+            entries={computed}
+            onClose={() => setOpenModal(null)}
+          />
         )}
       </div>
     </div>
